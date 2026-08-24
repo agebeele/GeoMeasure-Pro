@@ -1,0 +1,6 @@
+{
+  "name": "GeoMeasure Pro",
+  "description": "Medición GPS de distancias y áreas marcando puntos (A, B, C), visualización en tiempo real de ruta caminada y generación de mapas exportables.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
