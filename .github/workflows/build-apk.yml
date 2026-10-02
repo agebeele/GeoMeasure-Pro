@@ -1,0 +1,103 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+
+      - name: Prepare Keystore & Environment
+        run: |
+          # Restore debug.keystore from base64 if not directly in repo
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            echo "Restoring debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            echo "Generating fallback debug keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # Ensure .env exists for Secrets Gradle plugin
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          elif [ ! -f .env ]; then
+            touch .env
+          fi
+
+      - name: Build Debug APK
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Prepare APK Asset
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/GeoMeasure-Pro.apk
+          echo "APK generated successfully at app/build/outputs/apk/debug/GeoMeasure-Pro.apk"
+
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GeoMeasure-Pro-APK
+          path: app/build/outputs/apk/debug/GeoMeasure-Pro.apk
+          retention-days: 30
+
+      - name: Create or Update GitHub Release
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "📱 GeoMeasure Pro - Instalador APK"
+          body: |
+            ## 📱 GeoMeasure Pro - APK Listo para Instalar
+
+            Descarga directa del APK para instalar en tu teléfono celular sin cables ni complicaciones.
+
+            ### ⬇️ Descarga:
+            Haz clic en el archivo **`GeoMeasure-Pro.apk`** debajo para descargarlo en tu teléfono.
+
+            ---
+
+            ### 🚀 Pasos para instalar en tu Android:
+            1. Abre este enlace o pestaña desde el navegador de tu teléfono móvil.
+            2. Descarga el archivo **`GeoMeasure-Pro.apk`**.
+            3. Una vez descargado, tócalo para abrirlo e instalarlo.
+            4. Si el sistema te muestra el aviso de seguridad de Android, presiona **"Configuración / Ajustes"** y activa la opción **"Permitir desde esta fuente"** (o instalar apps desconocidas).
+            5. ¡Listo! Abre **GeoMeasure Pro** y comienza a medir.
+          files: |
+            app/build/outputs/apk/debug/GeoMeasure-Pro.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
